@@ -11,7 +11,7 @@ Three main experiments as described in the paper include:
 	- Main implementation files are Experiments.R to run partition MCMC on the data and plotDAG.R for Figure 4; Complementary_exp.R is for the complementary study (Table 6). Other files are utility  functions for plotting (converting adjacency matrix to ggdag, extracting coefficients, blacklists).
 
 
-For all of the experiments, partition MCMC was used for the task of structure learning. The BGe score was used for experiments involving continuous data and the BDe score was used for experiments involving categorical data.
+Partition MCMC was used for the task of structure learning, other than the CLG model implementation, which uses structure MCMC (structureMCMC). The BGe score was used for experiments involving continuous data and the BDe score was used for experiments involving categorical data.
 	
 
 
