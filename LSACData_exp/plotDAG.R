@@ -5,6 +5,7 @@ library(stringr)
 library(lavaan)
 library(dagitty)
 library(ggdag)
+library(ggraph)
 library(BiDAG)
 library(ggraph)
 library(tidygraph)
@@ -13,20 +14,21 @@ library(igraph)
 ## Implement partition MCMC for LSAC data
 
 vartype = "BGe" # or "BGe"
-iterations<-1000000
+iterations<-100000
 options(scipen=999)
 
 
 
-source('adjMat2ggdag.R') # convert adjacency matrix to ggdag
-source('extract.bn.fit.R') # extract coefficients and corresponding std's of these coefficients
-source('blackpartition.R') # convert blacklist dataframe to a matrix
-load('nodes.RData') # node labels
+source('RAG/LSACData_exp/adjMat2ggdag.R') # convert adjacency matrix to ggdag
+source('RAG/LSACData_exp/extract.bn.fit.R') # extract coefficients and corresponding std's of these coefficients
+source('RAG/LSACData_exp/blackpartition.R') # convert blacklist dataframe to a matrix
+load('RAG/LSACData_exp/nodes.RData') # node labels
 
 
 # "bge" results
 # Need to load partition mcmc results
-partcat <- bge_result$partbge
+#partcat <- bge_result$partbge
+partcat <- partbge
 
 # dat.dag is the data used to run P-MCMCM.
 dat.dag = B.W2
@@ -34,9 +36,9 @@ dat.dag = B.W2
 # sorting the dags output of partition MCMC.
 top_down <- order((unlist(partcat$trace)),decreasing = TRUE) 
 dags <- partcat$traceadd$incidence[top_down]
-adjMat <- unique(dags)[[2]]
+adjMat <- unique(dags)[[1]]
 
-coef.dat <- extract.bn.fit(adjMat, dat.dag , bdecat=TRUE)
+coef.dat <- extract.bn.fit(as.matrix(adjMat), dat.dag , bdecat=FALSE)
 
 gr <- dplyr::mutate(coef.dat, col=as.numeric(coef>0)) %>%  tidygraph::as_tbl_graph()
 
@@ -52,7 +54,9 @@ plots<- ggraph(new_gr,layout = "star") +
   theme_gray() + theme(axis.line=element_blank(),axis.text.x=element_blank(),axis.text.y=element_blank(),axis.ticks=element_blank(), axis.title.x=element_blank(),axis.title.y=element_blank()) + 
   theme_dag(legend.position = "none")
 
-ggsave("BW2Plot.pdf", plots, device="pdf",width = 7.5, height = 7.5)
+ggsave("BW2Plot-1.pdf", plots, device="pdf",width = 7.5, height = 7.5)
+
+###############################
 
 
 # "bdecat" results

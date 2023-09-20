@@ -1,5 +1,5 @@
 # LSAC data
-load("imputed.dat.all.RData")
+load("RAG/LSACData_exp/imputed.dat.all.RData")
 
 library(BiDAG)
 library(bnlearn)
@@ -52,12 +52,12 @@ W2.f <- as.data.frame(W2.f)
 
 ## Discretised dataset - Category option
 
-bdecatScore <- scoreparameters("bge", B.W2)
-partcat <- partitionMCMC(bdecatScore, blacklist=blklist, iterations=1000000)
-save(partcat, file = paste0("Data/","BWave2_bge",".RData"))
+bgeScore <- scoreparameters("bge", B.W2)
+partbge <- partitionMCMC(bgeScore, blacklist=blklist, iterations=100000)
+save(partbge, file = paste0("Data/","BWave2_bge",".RData"))
 
 bdecatScore <- scoreparameters("bdecat", W2.f)
-partcat <- partitionMCMC(bdecatScore, blacklist=blklist, iterations=1000000)
+partcat <- partitionMCMC(bdecatScore, blacklist=blklist, iterations=100000)
 save(partcat, file = paste0("Data/","BWave2_bdecat",".RData"))
 
 # Plot

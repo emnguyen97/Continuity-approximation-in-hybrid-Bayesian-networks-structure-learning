@@ -1,13 +1,14 @@
 library(dplyr)
 
-extract.bn.fit =function(DAG,dat,bdecat = FALSE){
+extract.bn.fit =function(DAG,dat,discvar = FALSE){
   # this function extract coefficients and corresponding std's of these coefficients.
   
   bn.temp=bnlearn::empty.graph(colnames(DAG))
   amat(bn.temp)=DAG
   
-  if (bdecat == TRUE){
-  fitted <- bn.fit(bn.temp,data = dat %>% mutate_if(sapply(dat, is.factor), as.numeric))
+  if (discvar == TRUE){
+  data <- dat %>% mutate_if(sapply(dat, is.factor), as.numeric)
+  fitted <- bn.fit(bn.temp,data = data)
   } else {
     fitted = bn.fit(x=bn.temp,data = dat)
   }
