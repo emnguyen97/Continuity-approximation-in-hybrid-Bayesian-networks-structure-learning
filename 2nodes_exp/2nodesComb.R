@@ -344,23 +344,22 @@ getIdx <- function(n, freqtable, k){
   which(sapply(1:n, function(i) identical(freqtable[[k]]$StructureStr[[i]], rep(0,4))))
 }
 
-# Get the frequency for the incorrect dag
-get_inc_freq <- function(freqtable, k, idx){
+# Get the frequency for the correct dag
+get_freq <- function(freqtable, k, idx){
   freqtable[[k]]$Frequency[idx]
 }
 
 F_ratio <- function(freqtable){
-  # Get the index of incorrect dags for each of the datasets
-  inc_indx <- sapply(1:100, function(x) getIdx(nrow(freqtable[[x]]),freqtable, x))
+  # Get the index of correct dags for each of the datasets
+  c_indx <- sapply(1:nsim, function(x) getIdx(nrow(freqtable[[x]]),freqtable, x))
   
-  # Get the frequency of incorrect dags for each of the datasets
-  inc_freq <- sapply(1:100, function(x) get_inc_freq(freqtable, x, inc_indx[[x]])) 
+  # Get the frequency of correct dags for each of the datasets
+  c_freq <- sapply(1:nsim, function(x) get_freq(freqtable, x, c_indx[[x]])) 
   
-  inc_freq_unlist <- as.numeric(sapply(inc_freq, function(s) if (length(s) == 0) 0 else paste(s, collapse = " ")))
+  c_freq_unlist <- as.numeric(sapply(c_freq, function(s) if (length(s) == 0) 0 else paste(s, collapse = " ")))
   
-  sum(100000 - inc_freq_unlist)/sum(inc_freq_unlist)
+  sum(c_freq_unlist)/sum(100000 - c_freq_unlist)
 }
 
-
-F_ratio(Freq_comb0.1.bge)
-F_ratio(Freq_comb0.1.bde)
+# Extracting frequency table for unique structures
+F_ratio(Freqtab)
