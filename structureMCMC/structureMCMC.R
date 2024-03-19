@@ -9,7 +9,7 @@
 
 # Standard edge reversal can also be toggled with 'revallowed'
 
-structureMCMC <- function(n,data,incidence,iterations,stepsave,fan.in,parenttable,scoretable,revallowed,moveprobs,blacklist,scoretype){
+structureMCMC <- function(n,data,incidence,iterations,stepsave,fan.in,parenttable,scoretable,revallowed,moveprobs,blacklist=NULL,scoretype, sample_parameters=FALSE){
   
   newedgerevallowed<-1 # allow the new edge reversal moves
   if(length(moveprobs)==1){
@@ -17,16 +17,13 @@ structureMCMC <- function(n,data,incidence,iterations,stepsave,fan.in,parenttabl
     chosenmove<-1 
   }
   
+  if (is.null(blacklist)){
+    blacklist <- matrix(numeric(n*n),nrow=n)
+    colnames(blacklist) <- rownames(blacklist) <- colnames(data)
+  }
+  
+  N <- nrow(data)
   colnames(incidence) <- rownames(incidence) <- colnames(data)
-  
-  #inci <- as(incidence,"graphNEL")
-  inci <- igraph::as_graphnel(igraph::graph_from_adjacency_matrix(incidence))
-  inci.bn <- bnlearn::as.bn(inci)
-  
-  #currentDAGlogscores<-DAGnodescore(incidence, n, c(1:n)) # score directly
-  #currentDAGlogscores<-DAGscorefromtable(incidence,n,c(1:n),parenttable,scoretable) # or from the table of scores
-  #currentDAGlogscore<-sum(currentDAGlogscores) # score of incidence matrix
-  currentDAGlogscore <- bnlearn::score(inci.bn, data, type = scoretype)
   
   L1 <- list() #stores the adjecency matrices
   L2 <- list() # stores the log BGe score of the DAGs
@@ -36,7 +33,38 @@ structureMCMC <- function(n,data,incidence,iterations,stepsave,fan.in,parenttabl
   length(L2) <- zlimit
   
   L1[[1]]<-incidence #starting adjacency matrix
-  L2[[1]]<-currentDAGlogscore #starting DAG score
+  
+  if (sample_parameters == TRUE) {
+    # Full acceptance ratio
+    # Initialization
+    am<-1
+    aw<-n+am+1
+    t <- am*(aw-n-1)/(am+1)
+    T0<-diag(t,n,n)
+    mu0<-numeric(n)
+    TN <- T0 + (N-1)* cov(data) + ((am*N)/(am+N))* (mu0 - colMeans(data))%*%t(mu0 - colMeans(data)) 
+    
+    currentsigma2 <- sapply(1:n, function(x) update.sigma2j(j=x,N,incidence,am,TN))
+    currentbetas <- sapply(1:n, function(x) update.betaj(j=x,incidence,sigma2j=currentsigma2[x],TN))
+    
+    #current DAG score
+    curr_like <- sapply(1:n,function(x) loglikelihood(j=x,data,incidence,betas=currentbetas[,x],sigma2s=currentsigma2[x],am))  # current likelihood 
+    curr_prior <- pIG(currentsigma2,(aw - n + colSums(incidence) + 1)/2,t/2,log=TRUE) + 
+      sapply(1:n, function(x) pMVN(incidence,currentbetas[,x],j=x,t=t,sigma2j=currentsigma2[x],log=TRUE))
+    
+    q_currsigma2logscore <- sapply(1:n, function(x) density.sigma2j(j=x,N,incidence,currentsigma2[x],am, TN))
+    q_currbetaslogscore <- sapply(1:n, function(x) density.betaj(j=x,incidence,currentbetas[,x],sigma2j=currentsigma2[x],TN))
+    
+    currentDAGlogscores <- curr_like + curr_prior - (q_currsigma2logscore + q_currbetaslogscore) 
+    currentDAGlogscore<-sum(currentDAGlogscores)
+    L2[[1]]<- currentDAGlogscore
+    
+  } else {
+    inci <- igraph::as_graphnel(igraph::graph_from_adjacency_matrix(incidence))
+    inci.bn <- bnlearn::as.bn(inci)
+    currentDAGlogscore <- bnlearn::score(inci.bn, data, type = scoretype)
+    L2[[1]]<-currentDAGlogscore #starting DAG score
+  }
   
   # first ancestor matrix
   ancest1 <- ancestor(incidence)
@@ -67,6 +95,7 @@ structureMCMC <- function(n,data,incidence,iterations,stepsave,fan.in,parenttabl
   currentnbhoodnorevs <- sum(num_deletion,num_addition)+1
   currentnbhood <- currentnbhoodnorevs+num_reversal
   
+  n_accept <- 0
   for (z in 2:zlimit){
     for (count in 1:stepsave){
       
@@ -183,9 +212,42 @@ structureMCMC <- function(n,data,incidence,iterations,stepsave,fan.in,parenttabl
                  #proposedDAGrescored<-DAGscorefromtable(incidence_new, n, rescorenodes,parenttable,scoretable) # or from the score table
                  #proposedDAGlogscore<-currentDAGlogscore-sum(currentDAGlogscores[rescorenodes])+sum(proposedDAGrescored[rescorenodes]) #and the new log total score by updating only the necessary nodes
                  #inci.new <- as(incidence_new,"graphNEL")
-                 inci.new <- igraph::as_graphnel(igraph::graph_from_adjacency_matrix(incidence_new))
-                 inci.new.bn <- bnlearn::as.bn(inci.new)
-                 proposedDAGlogscore <- bnlearn::score(inci.new.bn, data, type = scoretype)
+                 
+                 if (sample_parameters == TRUE) {
+                   # Full ratios with betas and sigma2
+                   # Proposed sigma2 and betas values
+                   # proposedsigma2 <- sapply(rescorenodes, function(x) update.sigma2j(j=x,N,incidence_new,am,TN))
+                   # proposedbetas <- mapply(function(x,y) update.betaj(j=x,incidence_new,sigma2j=y,TN),
+                   #                         rescorenodes, proposedsigma2)
+                   proposedsigma2 <- sapply(1:n, function(x) update.sigma2j(j=x,N,incidence_new,am,TN))
+                   proposedbetas <- sapply(1:n, function(x) update.betaj(j=x,incidence_new,sigma2j=proposedsigma2[x],TN))
+                   
+                   # Proposal: Proposed & current sigma2 and betas log score
+                   # q_propsigma2logscore <- mapply(function(x,y) density.sigma2j(j=x,N,incidence_new,y,am,TN), rescorenodes, proposedsigma2)
+                   # q_propbetaslogscore <- mapply(function(re,be) density.betaj(j=re,incidence_new,values=proposedbetas[,be],sigma2j=proposedsigma2[be],TN), rescorenodes, c(1:length(rescorenodes)))
+                   q_propsigma2logscore <- sapply(1:n, function(x) density.sigma2j(j=x,N,incidence_new,proposedsigma2[x],am, TN))
+                   q_propbetaslogscore <- sapply(1:n, function(x) density.betaj(j=x,incidence_new,proposedbetas[,x],sigma2j=proposedsigma2[x],TN))
+                   
+                   # Likelihood scores
+                   # prop_like <- mapply(function(re,be) loglikelihood(j=re,data,incidence_new,betas=proposedbetas[,be],sigma2s=proposedsigma2[be],am=am), rescorenodes, c(1:length(rescorenodes)))
+                   prop_like <- sapply(1:n, function(x) loglikelihood(j=x,data,incidence_new,betas=proposedbetas[,x],sigma2s=proposedsigma2[x],am=am))
+
+                   
+                   # Priors has to be the same as the prior derived from bge
+                   # prop_prior <- mapply(function(re,be) pIG(proposedsigma2[be],(aw - n + colSums(incidence_new)[re] + 1)/2,t/2,log=TRUE), rescorenodes, c(1:length(rescorenodes))) +
+                   #   mapply(function(re,be) pMVN(incidence_new,proposedbetas[,be],j=re,t=t,sigma2j=proposedsigma2[be],log=TRUE), rescorenodes, c(1:length(rescorenodes)))
+                   prop_prior <- pIG(proposedsigma2,(aw - n + colSums(incidence_new) + 1)/2,t/2,log=TRUE) + 
+                     sapply(1:n, function(x) pMVN(incidence_new,proposedbetas[,x],j=x,t=t,sigma2j=proposedsigma2[x],log=TRUE))
+                   
+                   proposedlogscores <- prop_like + prop_prior - (q_propsigma2logscore + q_propbetaslogscore)
+                   #proposedDAGlogscore<-currentDAGlogscore-sum(currentDAGlogscores[rescorenodes])+sum(proposedlogscores)
+                   proposedDAGlogscore<-sum(proposedlogscores)
+                   
+                 } else {
+                   inci.new <- igraph::as_graphnel(igraph::graph_from_adjacency_matrix(incidence_new))
+                   inci.new.bn <- bnlearn::as.bn(inci.new)
+                   proposedDAGlogscore <- bnlearn::score(inci.new.bn, data, type = scoretype)
+                 }
                  
                  if(revallowed==1){
                    scoreratio<-exp(proposedDAGlogscore-currentDAGlogscore)*(currentnbhood/proposednbhood) #acceptance probability
@@ -205,6 +267,7 @@ structureMCMC <- function(n,data,incidence,iterations,stepsave,fan.in,parenttabl
                    num_reversal <- num_reversal_new
                    add <- add.new
                    re <- re.new
+                   n_accept <- n_accept + 1
                  }
                }  # end of staying still loop
              },
@@ -250,7 +313,7 @@ structureMCMC <- function(n,data,incidence,iterations,stepsave,fan.in,parenttabl
     L1[[z]] <- incidence
     L2[[z]] <- currentDAGlogscore 
   }
-  return(list(incidence=L1,DAGlogscore=L2))
+  return(list(incidence=L1,DAGlogscore=L2,Acceptance=n_accept/(zlimit-1)))
 }
 
 ################################################################################

@@ -36,6 +36,7 @@ top_order <- function(incidence){
 
 ### assign the topological order of the descendants of the child
 des_top_order <- function(incidence, ancest1,child){
+  n <- dim(incidence)[1]
   top <- top_order(incidence)
   position_child <- which(top==child)
   top_all_after <- top[position_child:n]                # top. order without the "first" nodes
