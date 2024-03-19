@@ -208,39 +208,27 @@ structureMCMC <- function(n,data,incidence,iterations,stepsave,fan.in,parenttabl
                    rescorenodes<-c(child,parent)
                  }
                  
-                 #proposedDAGrescored<-DAGnodescore(incidence_new, n, rescorenodes) # rescore relevant nodes directly
-                 #proposedDAGrescored<-DAGscorefromtable(incidence_new, n, rescorenodes,parenttable,scoretable) # or from the score table
-                 #proposedDAGlogscore<-currentDAGlogscore-sum(currentDAGlogscores[rescorenodes])+sum(proposedDAGrescored[rescorenodes]) #and the new log total score by updating only the necessary nodes
-                 #inci.new <- as(incidence_new,"graphNEL")
-                 
                  if (sample_parameters == TRUE) {
                    # Full ratios with betas and sigma2
                    # Proposed sigma2 and betas values
-                   # proposedsigma2 <- sapply(rescorenodes, function(x) update.sigma2j(j=x,N,incidence_new,am,TN))
-                   # proposedbetas <- mapply(function(x,y) update.betaj(j=x,incidence_new,sigma2j=y,TN),
-                   #                         rescorenodes, proposedsigma2)
+                     rescorenodes, proposedsigma2)
                    proposedsigma2 <- sapply(1:n, function(x) update.sigma2j(j=x,N,incidence_new,am,TN))
                    proposedbetas <- sapply(1:n, function(x) update.betaj(j=x,incidence_new,sigma2j=proposedsigma2[x],TN))
                    
                    # Proposal: Proposed & current sigma2 and betas log score
-                   # q_propsigma2logscore <- mapply(function(x,y) density.sigma2j(j=x,N,incidence_new,y,am,TN), rescorenodes, proposedsigma2)
-                   # q_propbetaslogscore <- mapply(function(re,be) density.betaj(j=re,incidence_new,values=proposedbetas[,be],sigma2j=proposedsigma2[be],TN), rescorenodes, c(1:length(rescorenodes)))
                    q_propsigma2logscore <- sapply(1:n, function(x) density.sigma2j(j=x,N,incidence_new,proposedsigma2[x],am, TN))
                    q_propbetaslogscore <- sapply(1:n, function(x) density.betaj(j=x,incidence_new,proposedbetas[,x],sigma2j=proposedsigma2[x],TN))
                    
                    # Likelihood scores
-                   # prop_like <- mapply(function(re,be) loglikelihood(j=re,data,incidence_new,betas=proposedbetas[,be],sigma2s=proposedsigma2[be],am=am), rescorenodes, c(1:length(rescorenodes)))
                    prop_like <- sapply(1:n, function(x) loglikelihood(j=x,data,incidence_new,betas=proposedbetas[,x],sigma2s=proposedsigma2[x],am=am))
 
                    
                    # Priors has to be the same as the prior derived from bge
-                   # prop_prior <- mapply(function(re,be) pIG(proposedsigma2[be],(aw - n + colSums(incidence_new)[re] + 1)/2,t/2,log=TRUE), rescorenodes, c(1:length(rescorenodes))) +
-                   #   mapply(function(re,be) pMVN(incidence_new,proposedbetas[,be],j=re,t=t,sigma2j=proposedsigma2[be],log=TRUE), rescorenodes, c(1:length(rescorenodes)))
                    prop_prior <- pIG(proposedsigma2,(aw - n + colSums(incidence_new) + 1)/2,t/2,log=TRUE) + 
                      sapply(1:n, function(x) pMVN(incidence_new,proposedbetas[,x],j=x,t=t,sigma2j=proposedsigma2[x],log=TRUE))
                    
                    proposedlogscores <- prop_like + prop_prior - (q_propsigma2logscore + q_propbetaslogscore)
-                   #proposedDAGlogscore<-currentDAGlogscore-sum(currentDAGlogscores[rescorenodes])+sum(proposedlogscores)
+     
                    proposedDAGlogscore<-sum(proposedlogscores)
                    
                  } else {
