@@ -1,3 +1,3 @@
 # RAG
 
-This repository contains complimentary experimental implementations to the paper Structure Learning for Hybrid Bayesian Networks.
+This repository contains complementary experimental implementations to the "Continuity Approximation in Hybrid Bayesian Networks Structure Learning" paper.
