@@ -609,5 +609,5 @@ post_process(Sdd_RAG_0.6)
 post_process(Sdd_RAG_0.9)
 
 
-save.image(file="RAG/2nodes_exp/Lemma1.RData")
+save.image(file="2nodes_exp/Lemma1.RData")
 

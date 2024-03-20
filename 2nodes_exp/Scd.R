@@ -21,7 +21,7 @@ source('StructureMCMC/structurefns.R')
 source('StructureMCMC/samplefns.R')
 source('StructureMCMC/param_utils.R')
 source('StructureMCMC/structureMCMC.R')
-source('2nodes/Utils.R')
+source('2nodes_exp/Utils.R')
 
 set.seed(2024)
 
@@ -210,4 +210,4 @@ post_process(Scd_CLG_1)
 post_process(Scd_CLG_1.5)
 post_process(Scd_CLG_2)
 
-save.image(file="2nodes/Scd.RData")
+#save.image(file="2nodes_exp/Scd.RData")

@@ -14,7 +14,7 @@ library(ggplot2)
 library(parallel)
 library(doParallel)
 
-source('2nodes/Utils.R')
+source('2nodes_exp/Utils.R')
 
 set.seed(2024)
 
@@ -145,4 +145,4 @@ post_process(Sdd_RAG_0.4)
 post_process(Sdd_RAG_0.6)
 post_process(Sdd_RAG_0.9)
 
-save.image(file="2nodes/Sdd.RData")
+#save.image(file="2nodes_exp/Sdd.RData")
