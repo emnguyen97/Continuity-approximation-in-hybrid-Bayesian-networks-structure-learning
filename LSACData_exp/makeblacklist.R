@@ -60,4 +60,8 @@ blklist_clg=rbind(blklist_clg,temp)
 
 {
 blklist= blackpartition(blklist,dat.dag)
-blklist_clg= blackpartition(blklist_clg,dat.dag)}
+blklist_clg= blackpartition(blklist_clg,dat.dag)
+cont_nodes <- c("BMI","INC","SE","BM1","BM2","BWZ", "OD")
+cat_nodes <- setdiff(colnames(dat.dag),cont_nodes)
+blklist_clg[cont_nodes, cat_nodes] <- 1
+}

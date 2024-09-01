@@ -1,7 +1,7 @@
 library(tidyr)
 library(tibble)
 library(dplyr)
-beta= seq(0,3,length.out=50) #50
+beta= seq(-3,3,length.out=100) #50
 sb=1
 sa=1
 n=100000 # for approximation of p11 or p10
@@ -47,13 +47,13 @@ for(i in 1:length(beta)){
 
 library(ggplot2)
 p = ggplot(Scc.inf.table,aes(x = beta,y = r, linetype = type, col=type))
-p=p+ geom_line(lwd = 0.7) + scale_color_manual(values = c("#006600", "#000066")) 
-p=p+labs(linetype='Strategy',color='Strategy') +xlab(expression(beta)) +ylab("Posterior ratio")
-p=p + theme_light() 
-p=p+theme(legend.position = c(0.08, 0.86))
+p = p+ geom_line(lwd = 0.7) + scale_color_manual(values = c("#006600", "#000066")) 
+p = p+labs(linetype='Strategy',color='Strategy') +xlab(expression(beta)) +ylab("Posterior ratio")
+p = p + theme_light() 
+p = p + theme(legend.position = c(0.5, 0.86))
 p
 # + geom_hline(yintercept=log(2) , color= 'blue',linetype = "dashed")
-ggsave('2nodes/Postratio.inf.scc.pdf',plot = p,width = 6,height=4)
+ggsave('2nodes_exp/Postratio.inf.scc.negbeta.pdf',plot = p,width = 6,height=4)
 
 
 # Scd
@@ -121,13 +121,13 @@ for(i in 1:length(beta)){
 
 library(ggplot2)
 p = ggplot(Scd.inf.table,aes(x = beta,y = r, linetype = type, col=type))
-p=p+ geom_line(lwd = 0.7) + scale_color_manual(values = c("#006600", "#000066")) 
-p=p+labs(linetype='Strategy',color='Strategy') +xlab(expression(beta)) +ylab("Posterior ratio")
-p=p + theme_light() 
-p=p+theme(legend.position = c(0.08, 0.86))
+p = p+ geom_line(lwd = 0.7) + scale_color_manual(values = c("#006600", "#000066")) 
+p = p+labs(linetype='Strategy',color='Strategy') +xlab(expression(beta)) +ylab("Posterior ratio")
+p = p + theme_light() 
+p = p + theme(legend.position = c(0.5, 0.86))
 p
 # + geom_hline(yintercept=log(2) , color= 'blue',linetype = "dashed")
-ggsave('2nodes/Postratio.inf.scd.pdf',plot = p,width = 6,height=4)
+ggsave('2nodes_exp/Postratio.inf.scd.negbeta.pdf',plot = p,width = 6,height=4)
 
 # Sdc
 postratio.bge.dc= function(beta,sb){
@@ -166,19 +166,19 @@ for(i in 1:length(beta)){
 
 
 p = ggplot(Sdc.inf.table,aes(x = beta,y = r, linetype = type, col=type))
-p=p+ geom_line(lwd = 0.7) + scale_color_manual(values = c("#006600", "#000066"))
-p=p+labs(linetype='Strategy',color='Strategy') +xlab(expression(beta)) +ylab("Posterior ratio")
-p=p + theme_light() 
-p=p+theme(legend.position = c(0.08, 0.86))
+p = p+ geom_line(lwd = 0.7) + scale_color_manual(values = c("#006600", "#000066"))
+p = p+labs(linetype='Strategy',color='Strategy') +xlab(expression(beta)) +ylab("Posterior ratio")
+p = p + theme_light() 
+p = p + theme(legend.position = c(0.5, 0.86))
 p
 # + geom_hline(yintercept=log(2) , color= 'blue',linetype = "dashed")
-ggsave('2nodes/Postratio.inf.sdc.pdf',plot = p,width = 6,height=4)
+ggsave('2nodes_exp/Postratio.inf.sdc.negbeta.pdf',plot = p,width = 6,height=4)
 
 
 
 # Sdd
 p=1/2
-beta= seq(0,0.999,length.out=50) #50
+beta= seq(-0.999,0.999,length.out=100) #50
 postratio.bge.dd= function(beta,p){
   r= 1/2 * log( (1- (2*p-1)^2* beta^2)/(1-beta^2))
   return(r)
@@ -210,13 +210,13 @@ for(i in 1:length(beta)){
   cat(r,'\n')
 }
 p = ggplot(Sdd.inf.table,aes(x = beta,y = r, linetype = type, col=type))
-p=p+ geom_line(lwd = 0.7) + scale_color_manual(values = c("#006600", "#000066")) 
-p=p+labs(linetype='Strategy',color='Strategy') +xlab(expression(beta)) +ylab("Posterior ratio")
-p=p + theme_light() 
-p=p+theme(legend.position = c(0.08, 0.86))
+p = p+ geom_line(lwd = 0.7) + scale_color_manual(values = c("#006600", "#000066")) 
+p = p+labs(linetype='Strategy',color='Strategy') +xlab(expression(beta)) +ylab("Posterior ratio")
+p = p + theme_light() 
+p = p + theme(legend.position = c(0.5, 0.86))
 p
 # + geom_hline(yintercept=log(2) , color= 'blue',linetype = "dashed")
-ggsave('2nodes/Postratio.inf.sdd.pdf',plot = p,width =6,height=4)
+ggsave('2nodes_exp/Postratio.inf.sdd.negbeta.pdf',plot = p,width =6,height=4)
 
 
 

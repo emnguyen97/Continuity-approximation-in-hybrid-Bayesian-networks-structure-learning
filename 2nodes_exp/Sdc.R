@@ -15,12 +15,12 @@ library(parallel)
 library(doParallel)
 
 # Load the necessary functions
-source('StructureMCMC/combinations.R')
-source('StructureMCMC/scoretables.R')
-source('StructureMCMC/structurefns.R')
-source('StructureMCMC/samplefns.R')
-source('StructureMCMC/param_utils.R')
-source('StructureMCMC/structureMCMC.R')
+source('structureMCMC/combinations.R')
+source('structureMCMC/scoretables.R')
+source('structureMCMC/structurefns.R')
+source('structureMCMC/samplefns.R')
+source('structureMCMC/param_utils.R')
+source('structureMCMC/structureMCMC.R')
 source('2nodes_exp/Utils.R')
 
 set.seed(3636)
@@ -33,7 +33,7 @@ iter = 50000
 # True DAG structure
 model <- model2network("[A][B|A]")
 graphviz.plot(model)
-truemat <- as.matrix(get.adjacency(graph.edgelist(arcs(model))))
+truemat <- as.matrix(as_adjacency_matrix(graph_from_edgelist(arcs(model))))
 
 # Empty dataset
 dat <- matrix(NA,nrow=nrep,ncol = nvar)
@@ -43,11 +43,16 @@ colnames(dat) <- LETTERS[1:nvar]
 #####S_dc###########################################
 #####RAG######
 # List of datasets to be used for inference
-Sdc_0.05_ds <- lapply(1:nsim, function(i) Sdc_Data(data=dat,beta=0.05,nrep))
-Sdc_0.5_ds <- lapply(1:nsim, function(i) Sdc_Data(data=dat,beta=0.5,nrep))
-Sdc_1_ds <- lapply(1:nsim, function(i) Sdc_Data(data=dat,beta=1,nrep))
-Sdc_1.5_ds <- lapply(1:nsim, function(i) Sdc_Data(data=dat,beta=1.5,nrep))
-Sdc_2_ds <- lapply(1:nsim, function(i) Sdc_Data(data=dat,beta=2,nrep))
+Sdc_0.05_ds <- lapply(1:nsim, function(i) Sdc_Data(data=dat,beta=0.05,nrep)
+                      %>% mutate(A = as.numeric(A), B = as.numeric(B)))
+Sdc_0.5_ds <- lapply(1:nsim, function(i) Sdc_Data(data=dat,beta=0.5,nrep)
+                     %>% mutate(A = as.numeric(A), B = as.numeric(B)))
+Sdc_1_ds <- lapply(1:nsim, function(i) Sdc_Data(data=dat,beta=1,nrep)
+                   %>% mutate(A = as.numeric(A), B = as.numeric(B)))
+Sdc_1.5_ds <- lapply(1:nsim, function(i) Sdc_Data(data=dat,beta=1.5,nrep)
+                     %>% mutate(A = as.numeric(A), B = as.numeric(B)))
+Sdc_2_ds <- lapply(1:nsim, function(i) Sdc_Data(data=dat,beta=2,nrep)
+                   %>% mutate(A = as.numeric(A), B = as.numeric(B)))
 
 # Running inference
 numCores <- detectCores()
@@ -211,4 +216,52 @@ post_process(Sdc_CLG_1)
 post_process(Sdc_CLG_1.5)
 post_process(Sdc_CLG_2)
 
-#save.image(file="2nodes_exp/Sdc.RData")
+#####RAG-MLL#####
+# Running inference
+cl <- parallel::makeCluster(numCores)
+doParallel::registerDoParallel(cl) 
+
+Sdc_RAG_0.05_like <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(Sdc_0.05_ds[[i]])
+  result$result <- runStructMCMC(data,iterations = iter,blklist=NULL,scoretype="bic-g",sample_parameters=FALSE)
+  return(result)
+}
+
+Sdc_RAG_0.5_like <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(Sdc_0.5_ds[[i]])
+  result$result <- runStructMCMC(data,iterations = iter,blklist=NULL,scoretype="bic-g",sample_parameters=FALSE)
+  return(result)
+}
+
+Sdc_RAG_1_like <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(Sdc_1_ds[[i]])
+  result$result <- runStructMCMC(data,iterations = iter,blklist=NULL,scoretype="bic-g",sample_parameters=FALSE)
+  return(result)
+}
+
+Sdc_RAG_1.5_like <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(Sdc_1.5_ds[[i]])
+  result$result <- runStructMCMC(data,iterations = iter,blklist=NULL,scoretype="bic-g",sample_parameters=FALSE)
+  return(result)
+}
+
+Sdc_RAG_2_like <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(Sdc_2_ds[[i]])
+  result$result <- runStructMCMC(data,iterations = iter,blklist=NULL,scoretype="bic-g",sample_parameters=FALSE)
+  return(result)
+}
+
+stopCluster(cl)
+
+post_process(Sdc_RAG_0.05_like)
+post_process(Sdc_RAG_0.5_like)
+post_process(Sdc_RAG_1_like)
+post_process(Sdc_RAG_1.5_like)
+post_process(Sdc_RAG_2_like)
+
+save.image(file="2nodes_exp/Sdc.RData")

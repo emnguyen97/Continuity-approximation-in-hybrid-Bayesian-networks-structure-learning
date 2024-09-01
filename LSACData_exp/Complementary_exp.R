@@ -1,12 +1,13 @@
 # LSAC data
-load("RAG/LSACData_exp/imputed.dat.all.RData")
+load("LSACData_exp/imputed.dat.all.RData")
 # Load the necessary functions
-source('RAG/structureMCMC/combinations.R')
-source('RAG/structureMCMC/scoretables.R')
-source('RAG/structureMCMC/structurefns.R')
-source('RAG/structureMCMC/samplefns.R')
-source('RAG/structureMCMC/structureMCMC.R')
-source('RAG/LSACData_exp/blackpartition.R')
+source('StructureMCMC/combinations.R')
+source('StructureMCMC/scoretables.R')
+source('StructureMCMC/structurefns.R')
+source('StructureMCMC/samplefns.R')
+source('StructureMCMC/param_utils.R')
+source('StructureMCMC/structureMCMC.R')
+source('LSACData_exp/blackpartition.R')
 
 library(BiDAG)
 library(bnlearn)
@@ -17,8 +18,20 @@ library(dagitty)
 library(bnlearn)
 library(reshape2)
 library(igraph)
-library(gRain)
 library(dplyr)
+library(parallel)
+library(doParallel)
+
+multiResultClass <- function(result=NULL)
+{
+  me <- list(
+    result = result
+  )
+  
+  ## Set the name for the class
+  class(me) <- append(class(me),"multiResultClass")
+  return(me)
+}
 
 nsim <- 100
 
@@ -26,11 +39,17 @@ nsim <- 100
 runPmcmc <- function(score, blacklist, data){
   data <- as.data.frame(data)
   
-  myScore<-BiDAG::scoreparameters(score, data)
+  partition_score = BiDAG::scoreparameters(scoretype = score,
+                                    data = data, 
+                                    bgepar = list(edgepf = floor(2*log(ncol(data)))))
   
-  partfit<-BiDAG::partitionMCMC(myScore, blacklist=blklist, stepsave=1, iterations=100000)
+  results_partition = BiDAG::partitionMCMC(scorepar = partition_score,
+                                    iterations = 100000, 
+                                    blacklist=blklist)
   
-  return(partfit)
+  # pip_partition = as.matrix(edgep(results_partition))
+  
+  return(results_partition)
 }
 
 runStrcmcmc <- function(blacklist, data){
@@ -42,11 +61,6 @@ runStrcmcmc <- function(blacklist, data){
   # Fill up a matrix with possible parents
   
   parenttable<-listpossibleparents(maxparents,c(1:n))
-  tablelength<-nrow(parenttable[[1]]) # size of the table
-  
-  # Now need to score them!
-  
-  #scoretable<-scorepossibleparents(parenttable,n) 
   
   iterations<-100000 #number of iterations in the chain
   moveprobs<-1 # having length 1 disallows the new edge reversal move
@@ -107,37 +121,63 @@ n <- ncol(B.W2)
 
 # 1. Run pmcmc on the discretised data
 dat.dag <- W2.f
-source('RAG/LSACData_exp/makeblacklist.R')
+source('LSACData_exp/makeblacklist.R')
 partcat <- runPmcmc("bdecat", blacklist=blklist, W2.f)
 
-# 2. Set structure 
+# 2. Set up the Bayesian network structure from the learned DAG
 bn_struct <- empty.graph(colnames(W2.f))
 amat(bn_struct) <- as.matrix(partcat$DAG)
 graphviz.plot(bn_struct)
-options(digits=3)
-bn_mod <- bn.fit(bn_struct, data = W2.f, method = "mle")
+options(digits=5)
+bn_mod <- bn.fit(bn_struct, data = W2.f, method = "bayes")
 
-# 3. Run pMCMC on simulated datas using "bdecat" score
-options(digits = 3)
-# Simulate random samples from the structure 
-set.seed(97)
-B2.f_sim <- lapply(1:nsim, function(i) rbn(bn_mod, 15000))
+# 4. Simulate random samples from the structure
+set.seed(1124)
 
+# Step 1: Generate a large dataset with 20,000 samples
+B2.f_large <- lapply(1:nsim, function(i) rbn(bn_mod, 20000))
+
+# Step 2: Filter down to a subset of 5,000 samples that includes all levels
+B2.f_sim <- lapply(1:nsim, function(i) {
+  sim_data <- B2.f_large[[i]]
+  
+  # Create a sample of 5,000 that includes all levels
+  repeat {
+    sampled_data <- sim_data[sample(1:nrow(sim_data), 5000), ]
+    
+    # Check if all levels are present in the sampled data
+    all_levels_present <- all(sapply(1:ncol(sampled_data), function(j) {
+      all(levels(sim_data[, j]) %in% sampled_data[, j])
+    }))
+    
+    if (all_levels_present) break
+  }
+  
+  return(sampled_data)
+})
 # Check if any levels do not present in data
 # sapply(1:nsim, function(i) sum(sapply(1:ncol(B.W2), function(j) sum(table(B2.f_sim[[i]][,j])==0))))
 
+# Run pMCMC on simulated datas using "bdecat" score
+source('LSACData_exp/makeblacklist.R')
 sim_partcat <- list()
-for (i in 1:nsim) {
-  dat.dag <- B2.f_sim[[i]]
-  source('makeblacklist.R') 
-  sim_partcat[[i]] <- runPmcmc("bdecat", blacklist=blklist, dat.dag)
-}
+numCores <- detectCores() - 1
+cl <- parallel::makeCluster(numCores)
+doParallel::registerDoParallel(cl) 
 
-#save(sim_partcat, file = paste0("Cat-bdecat",".RData"))
+sim_partcat <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(B2.f_sim[[i]])
+  result$result <- runPmcmc("bdecat", blacklist=blklist, data)
+  return(result)
+}
+stopCluster(cl)
+
+save(sim_partcat, file = paste0("Cat-bdecat",".RData"))
 
 # 4. Obtain DAGs and compare to true DAG
 compDAGs_simcat <- lapply(1:nsim,
-                          function(i) compareDAGs(sim_partcat[[i]]$DAG, partcat$DAG))
+                          function(i) compareDAGs(sim_partcat[[i]]$DAG, partcat$DAG, cpdag = TRUE))
 
 sapply(1:8, function (x) mean(as.numeric(lapply(1:nsim, function(i) compDAGs_simcat[[i]][x]))))
 
@@ -146,45 +186,36 @@ sapply(1:8, function (x) mean(as.numeric(lapply(1:nsim, function(i) compDAGs_sim
 B2.f_gsim <- lapply(1:nsim, function(i) B2.f_sim[[i]] %>% mutate_if(sapply(B2.f_sim[[i]], is.factor), as.numeric))
 
 simbge_part <- list()
-for (i in 1:nsim) {
-  dat.dag <- B2.f_gsim[[i]]
-  source('RAG/LSACData_exp/makeblacklist.R') 
-  simbge_part[[i]] <- runPmcmc("bge", blacklist=blklist, dat.dag)
-}
+numCores <- detectCores() - 1
+cl <- parallel::makeCluster(numCores)
+doParallel::registerDoParallel(cl) 
 
-#save(simbge_part, file = paste0("Cat-bge",".RData"))
+simbge_part <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  dat.dag <- as.data.frame(B2.f_gsim[[i]])
+  result$result <- runPmcmc("bge", blacklist=blklist, dat.dag)
+  return(result)
+}
+stopCluster(cl)
+
+save(simbge_part, file = paste0("Cat-bge",".RData"))
 
 # Comparing with true DAGs
 compDAGs_simbge <- lapply(1:nsim,
-                          function(i) compareDAGs(simbge_part[[i]]$DAG, partcat$DAG))
+                          function(i) compareDAGs(simbge_part[[i]]$DAG, partcat$DAG, cpdag = TRUE))
 
 sapply(1:8, function (x) mean(as.numeric(lapply(1:nsim, function(i) compDAGs_simbge[[i]][x]))))
 
 # 6. Run pMCMC on simulated datas using CLG model 
 B2.f_clgsim <- lapply(1:nsim, function(i) B2.f_sim[[i]] %>% 
-                        mutate_if(names(B.W2) %in% c("BMI","INC","SE","BM1","BM2","BWZ"), as.numeric))
-
-
-library(parallel)
-library(doParallel)
-
-multiResultClass <- function(result=NULL)
-{
-  me <- list(
-    result = result
-  )
-  
-  ## Set the name for the class
-  class(me) <- append(class(me),"multiResultClass")
-  return(me)
-}
+                        mutate_if(names(B.W2) %in% c("BMI","INC","SE","BM1","BM2","BWZ", "OD"), as.numeric))
 
 sim_clgcat <- list()
-numCores <- detectCores()
+numCores <- detectCores() - 1
 cl <- parallel::makeCluster(numCores)
 doParallel::registerDoParallel(cl) 
 
-sim_clgcat <- foreach(i = seq_len(100), .combine = 'c') %dopar% {
+sim_clgcat <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
   result <- multiResultClass()
   dat.dag <- as.data.frame(B2.f_clgsim[[i]])
   result$result <- runStrcmcmc(blacklist=blklist_clg, dat.dag)
@@ -195,7 +226,7 @@ save(sim_clgcat, file = paste0("Cat-CLG",".RData"))
 
 # 7. Obtain DAGs and compare to true DAG
 compDAGs_simcat <- lapply(1:nsim,
-                          function(i) compareDAGs(sim_clgcat[[i]]$DAG, partcat$DAG))
+                          function(i) compareDAGs(sim_clgcat[[i]]$DAG, partcat$DAG, cpdag = TRUE))
 
 sapply(1:8, function (x) mean(as.numeric(lapply(1:nsim, function(i) compDAGs_simcat[[i]][x]))))
 
@@ -203,52 +234,60 @@ sapply(1:8, function (x) mean(as.numeric(lapply(1:nsim, function(i) compDAGs_sim
 # 1. Run pmcmc on the original data
 B.W2 <- as.data.frame(B.W2)
 dat.dag <- B.W2
-source('Data/makeblacklist.R') 
+source('LSACData_exp/makeblacklist.R') 
 partbge <- runPmcmc("bge", blacklist=blklist, dat.dag)
 
 # 2. Obtain DAG structure
 bge.struct <- empty.graph(colnames(B.W2))
-amat(bge.struct) <- partbge$DAG
+amat(bge.struct) <- as.matrix(partbge$DAG)
 graphviz.plot(bge.struct)
 options(digits=3)
 
 # 3. Simulate from DAG structure
 # Matching original categorical variables
-bn.mod <- bn.fit(bge.struct, data = B.W2, method = "mle")
-B2_sim.bge <- list()
+bn.mod <- bn.fit(bge.struct, data = B.W2, method = "mle-g")
+B2_sim.bge <- vector("list", nsim)  # Pre-allocate list
 
 cat <- c("SX","AC","FS","FH","ME1","FE1","RP1","DP1","FV","HF","HSD","SL","GW")
+cat_levels <- lapply(cat, function(j) levels(factor(B.W2[,j])))  # Precompute levels
 
-for (i in c(1:nsim)) {
-  temp <- B2_sim.bge[[i]] <-rbn(bn.mod, 7000)
+for (i in 1:nsim) {
+  temp <- rbn(bn.mod, 5000)
   
-  for (j in cat) {
-    levs <- levels(factor(B.W2[,j]))
-    
-    B2_sim.bge[[i]][,j] <- cut(temp[,j], 
-                               breaks = quantile(temp[,j], 1/length(levs)*c(0:length(levs))),
-                               labels=levs,
-                               include.lowest = TRUE)
+  # Apply cut only to categorical variables
+  for (j in seq_along(cat)) {
+    temp[, cat[j]] <- cut(temp[, cat[j]], 
+                          breaks = quantile(temp[, cat[j]], probs = seq(0, 1, length.out = length(cat_levels[[j]]) + 1)),
+                          labels = cat_levels[[j]],
+                          include.lowest = TRUE)
   }
   
-  B2_sim.bge[[i]] <- B2_sim.bge[[i]] %>% mutate_if(sapply(B2_sim.bge[[i]], is.factor), as.numeric) 
+  # Convert factors to numeric for categorical variables
+  B2_sim.bge[[i]] <- temp %>%
+    mutate(across(all_of(cat), as.numeric))
 }
-
 
 # 4. Run pmcmc on simulated data - bge
 
 sim_partbge <- list()
+numCores <- detectCores() - 1
+cl <- parallel::makeCluster(numCores)
+doParallel::registerDoParallel(cl) 
 
-for (i in c(1:nsim)) {
-  dat.dag <- B2_sim.bge[[i]]
-  source('Data/makeblacklist.R') 
-  sim_partbge[[i]] <- runPmcmc("bge", blacklist=blklist, dat.dag)
+sim_partbge <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  dat.dag <- as.data.frame(B2_sim.bge[[i]])
+  result$result <- runPmcmc("bge", blacklist=blklist, dat.dag)
+  return(result)
 }
+stopCluster(cl)
+
+save(sim_partbge, file = paste0("Cont-bge",".RData"))
 
 gsim_bgedags <- lapply(1:nsim, function(i) sim_partbge[[i]]$DAG)
 
 compDAGs_gsimbge <- lapply(1:nsim,
-                           function(i) compareDAGs(gsim_bgedags[[i]], partbge$DAG))
+                           function(i) compareDAGs(gsim_bgedags[[i]], partbge$DAG, cpdag = TRUE))
 
 sapply(1:8, function (x) mean(as.numeric(lapply(1:nsim, function(i) compDAGs_gsimbge[[i]][x]))))
 
@@ -286,33 +325,42 @@ catdiscrt <- function(data) {
 
 B2_sim.bdecat <- lapply(1:nsim, function(i) catdiscrt(B2_sim.bge[[i]]))
 
+source('LSACData_exp/makeblacklist.R')
 sim_partbdecat <- list()
+numCores <- detectCores() - 1
+cl <- parallel::makeCluster(numCores)
+doParallel::registerDoParallel(cl) 
 
-for (i in c(1:nsim)) {
-  dat.dag <- B2_sim.bdecat[[i]]
-  source('makeblacklist.R') 
-  sim_partbdecat[[i]] <- runPmcmc("bdecat", blacklist=blklist, dat.dag)
+sim_partbdecat <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(B2_sim.bdecat[[i]])
+  result$result <- runPmcmc("bdecat", blacklist=blklist, data)
+  return(result)
 }
+stopCluster(cl)
 
 save(sim_partbdecat, file = paste0("Cont-bdecat",".RData"))
 
 # Compare to true dag
 compDAGs_simbdecat <- lapply(1:nsim,
-                             function(i) compareDAGs(sim_partbdecat[[i]]$DAG, partbge$DAG))
+                             function(i) compareDAGs(sim_partbdecat[[i]]$DAG, partbge$DAG, cpdag = TRUE))
 
 sapply(1:8, function (x) mean(as.numeric(lapply(1:nsim, function(i) compDAGs_simbdecat[[i]][x]))))
 
 # 7. Run structure learning on simulated data - CLG
 
+B2_sim.clg <- lapply(1:nsim, function(i) B2_sim.bdecat[[i]] %>% 
+                        mutate_if(names(B.W2) %in% c("BMI","INC","SE","BM1","BM2","BWZ", "OD"), as.numeric))
+
 sim_partclg <- list()
-numCores <- detectCores()
+numCores <- detectCores() - 1
 cl <- parallel::makeCluster(numCores)
 doParallel::registerDoParallel(cl) 
 
-sim_partclg <- foreach(i = seq_len(100), .combine = 'c') %dopar% {
+sim_partclg <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
   result <- multiResultClass()
-  dat.dag <- as.data.frame(B2_sim.clg[[i]])
-  result$result <- runStrcmcmc(blacklist=blklist_clg, dat.dag)
+  data_clg <- as.data.frame(B2_sim.clg[[i]])
+  result$result <- runStrcmcmc(blacklist=blklist_clg, data_clg)
   return(result)
 }
 stopCluster(cl)
@@ -322,7 +370,7 @@ save(sim_partclg, file = paste0("Cont-CLG",".RData"))
 sim_clgdags <- lapply(1:nsim, function(i) sim_partclg[[i]]$DAG)
 
 compDAGs_simclg <- lapply(1:nsim,
-                          function(i) compareDAGs(sim_clgdags[[i]], partbge$DAG))
+                          function(i) compareDAGs(sim_clgdags[[i]], partbge$DAG, cpdag = TRUE))
 
 sapply(1:8, function (x) mean(as.numeric(lapply(1:nsim, function(i) compDAGs_simclg[[i]][x]))))
 
@@ -330,7 +378,7 @@ sapply(1:8, function (x) mean(as.numeric(lapply(1:nsim, function(i) compDAGs_sim
 # 1. Obtain DAG from CLG model on the original data
 B.W2_clg<- B.W2 %>% mutate_if(!names(B.W2) %in% c("BMI","INC","SE","BM1","BM2","BWZ"), factor)
 dat.dag <- as.data.frame(B.W2_clg)
-source('RAG/LSACData_exp/makeblacklist.R')
+source('LSACData_exp/makeblacklist.R')
 clgmod <- runStrcmcmc(blacklist=blklist_clg, data=dat.dag)
 
 # 2. Obtain DAG structure
@@ -342,21 +390,40 @@ options(digits=3)
 # 3. Simulate from DAG structure
 bn.mod <- bn.fit(clg.struct, data = dat.dag, method = "mle-cg")
 
-# Simulate random samples from the structure 
-set.seed(97)
-B2_sim.clg <- lapply(1:nsim, function(i) rbn(bn.mod, 15000))
+set.seed(1124)
+# Step 1: Generate a large dataset with 20,000 samples
+B2_clg_large <- lapply(1:nsim, function(i) rbn(bn.mod, 20000))
+
+# Step 2: Filter down to a subset of 5,000 samples that includes all levels
+B2_sim.clg <- lapply(1:nsim, function(i) {
+  sim_data <- B2_clg_large[[i]]
+  
+  # Create a sample of 5,000 that includes all levels
+  repeat {
+    sampled_data <- sim_data[sample(1:nrow(sim_data), 5000), ]
+    
+    # Check if all levels are present in the sampled data
+    all_levels_present <- all(sapply(1:ncol(sampled_data), function(j) {
+      all(levels(sim_data[, j]) %in% sampled_data[, j])
+    }))
+    
+    if (all_levels_present) break
+  }
+  
+  return(sampled_data)
+})
 
 # 4. Run structure learning on simulated data - CLG
 
 sim_clg <- list()
-numCores <- detectCores()
+numCores <- detectCores() - 1
 cl <- parallel::makeCluster(numCores)
 doParallel::registerDoParallel(cl) 
 
-sim_clg <- foreach(i = seq_len(100), .combine = 'c') %dopar% {
+sim_clg <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
   result <- multiResultClass()
-  dat.dag <- as.data.frame(B2_sim.clg[[i]])
-  result$result <- runStrcmcmc(blacklist=blklist_clg, dat.dag)
+  data <- as.data.frame(B2_sim.clg[[i]])
+  result$result <- runStrcmcmc(blacklist=blklist_clg, data)
   return(result)
 }
 stopCluster(cl)
@@ -366,7 +433,7 @@ save(sim_clg, file = paste0("Clg-CLG",".RData"))
 sim_clgdags <- lapply(1:nsim, function(i) sim_clg[[i]]$DAG)
 
 compDAGs_simclg <- lapply(1:nsim,
-                          function(i) compareDAGs(sim_clgdags[[i]], clgmod$DAG))
+                          function(i) compareDAGs(sim_clgdags[[i]], clgmod$DAG, cpdag = TRUE))
 
 sapply(1:8, function (x) mean(as.numeric(lapply(1:nsim, function(i) compDAGs_simclg[[i]][x]))))
 
@@ -376,11 +443,11 @@ B2.bgesim <- lapply(1:nsim, function(i) B2_sim.clg[[i]] %>%
                       mutate_if(!names(B.W2) %in% c("BMI","INC","SE","BM1","BM2","BWZ"), as.numeric))
 
 sim_bge <- list()
-numCores <- detectCores()
+numCores <- detectCores() - 1
 cl <- parallel::makeCluster(numCores)
 doParallel::registerDoParallel(cl) 
 
-sim_bge <- foreach(i = seq_len(100), .combine = 'c') %dopar% {
+sim_bge <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
   result <- multiResultClass()
   dat.dag <- as.data.frame(B2.bgesim[[i]])
   result$result <- runPmcmc("bge", blacklist=blklist, dat.dag)
@@ -392,7 +459,7 @@ save(sim_bge, file = paste0("Clg-bge",".RData"))
 sim_bgedags <- lapply(1:nsim, function(i) sim_bge[[i]]$DAG)
 
 compDAGs_simbge <- lapply(1:nsim,
-                          function(i) compareDAGs(sim_bgedags[[i]], clgmod$DAG))
+                          function(i) compareDAGs(sim_bgedags[[i]], clgmod$DAG, cpdag = TRUE))
 
 sapply(1:8, function (x) mean(as.numeric(lapply(1:nsim, function(i) compDAGs_simbge[[i]][x]))))
 
@@ -424,7 +491,7 @@ discrt <- function(data) {
 B2.bdecatsim <- lapply(1:nsim, function(i) discrt(B2_sim.clg[[i]]))
 
 sim_bdecat <- list()
-numCores <- detectCores()
+numCores <- detectCores() - 1
 cl <- parallel::makeCluster(numCores)
 doParallel::registerDoParallel(cl) 
 
@@ -439,7 +506,7 @@ save(sim_bdecat, file = paste0("Clg-bdecat",".RData"))
 
 sim_bdecatdags <- lapply(1:nsim, function(i) sim_bdecat[[i]]$DAG)
 
-compDAGs_simbdecat <- lapply(1:nsim, function(i) compareDAGs(sim_bdecatdags[[i]], clgmod$DAG))
+compDAGs_simbdecat <- lapply(1:nsim, function(i) compareDAGs(sim_bdecatdags[[i]], clgmod$DAG, cpdag = TRUE))
 
 sapply(1:8, function (x) mean(as.numeric(lapply(1:nsim, function(i) compDAGs_simbdecat[[i]][x]))))
 

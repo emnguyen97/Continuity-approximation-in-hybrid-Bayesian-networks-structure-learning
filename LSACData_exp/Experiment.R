@@ -1,5 +1,5 @@
 # LSAC data
-load("RAG/LSACData_exp/imputed.dat.all.RData")
+load("LSACData_exp/imputed.dat.all.RData")
 
 library(BiDAG)
 library(bnlearn)
@@ -48,6 +48,10 @@ W2.f <- as.data.frame(W2.f)
 #W2.cont <- W2.f %>% mutate_if(sapply(W2.f, is.factor), as.numeric)    
 
 #W2.cont <- as.data.frame(W2.cont)
+
+dat.dag = B.W2
+source("LSACData_exp/blackpartition.R")
+source("LSACData_exp/makeblacklist.R")
 
 
 ## Discretised dataset - Category option

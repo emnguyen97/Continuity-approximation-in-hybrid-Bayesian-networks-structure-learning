@@ -14,6 +14,13 @@ library(ggplot2)
 library(parallel)
 library(doParallel)
 
+# Load the necessary functions
+source('structureMCMC/combinations.R')
+source('structureMCMC/scoretables.R')
+source('structureMCMC/structurefns.R')
+source('structureMCMC/samplefns.R')
+source('structureMCMC/param_utils.R')
+source('structureMCMC/structureMCMC.R')
 source('2nodes_exp/Utils.R')
 
 set.seed(3636)
@@ -28,14 +35,15 @@ iter = 50000
 # True DAG structure
 model <- model2network("[A][B|A]")
 graphviz.plot(model)
-truemat <- as.matrix(get.adjacency(graph.edgelist(arcs(model))))
+truemat <- as.matrix(as_adjacency_matrix(graph_from_edgelist(arcs(model))))
 
 # Empty dataset
 dat <- matrix(NA,nrow=nrep,ncol = nvar)
 dat <- as_tibble(dat)
 colnames(dat) <- LETTERS[1:nvar]
 
-#####RAG######
+#####RAG-bge######
+print("Starting RAG experiments")
 # List of datasets to be used for inference
 # Continuous
 Cont0.05_ds <- lapply(1:nsim, function(i) Scc_Data(data=dat,beta=0.05,nrep,nvar))
@@ -93,6 +101,7 @@ post_process(Cont1)
 post_process(Cont1.5)
 post_process(Cont2)
 
+
 #####DISC-2######
 # List of datasets to be used for inference
 DISC0.05_ds <- lapply(1:nsim, function(i) as.data.frame(Scc_Discretised(Cont0.05_ds[[i]])))
@@ -147,6 +156,57 @@ post_process(DISC0.5)
 post_process(DISC1)
 post_process(DISC1.5)
 post_process(DISC2)
+
+#####RAG-Likelihood#####
+print("Starting RAG-Likelihood experiments")
+# Running inference
+numCores <- detectCores()
+cl <- parallel::makeCluster(numCores)
+doParallel::registerDoParallel(cl) 
+
+Cont0.05_like <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(Cont0.05_ds[[i]])
+  result$result <- runStructMCMC(data,iterations = iter,blklist=NULL,scoretype="bic-g",sample_parameters=FALSE)
+  return(result)
+}
+
+Cont0.5_like <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(Cont0.5_ds[[i]])
+  result$result <- runStructMCMC(data,iterations = iter,blklist=NULL,scoretype="bic-g",sample_parameters=FALSE)
+  return(result)
+}
+
+Cont1_like <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(Cont1_ds[[i]])
+  result$result <- runStructMCMC(data,iterations = iter,blklist=NULL,scoretype="bic-g",sample_parameters=FALSE)
+  return(result)
+}
+
+Cont1.5_like <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(Cont1.5_ds[[i]])
+  result$result <- runStructMCMC(data,iterations = iter,blklist=NULL,scoretype="bic-g",sample_parameters=FALSE)
+  return(result)
+}
+
+Cont2_like <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(Cont2_ds[[i]])
+  result$result <- runStructMCMC(data,iterations = iter,blklist=NULL,scoretype="bic-g",sample_parameters=FALSE)
+  return(result)
+}
+
+stopCluster(cl)
+
+
+post_process(Cont0.05_like)
+post_process(Cont0.5_like)
+post_process(Cont1_like)
+post_process(Cont1.5_like)
+post_process(Cont2_like)
 
 #save.image(file="2nodes_exp/Scc.RData")
 

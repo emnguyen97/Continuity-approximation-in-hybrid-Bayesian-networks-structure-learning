@@ -14,7 +14,15 @@ library(ggplot2)
 library(parallel)
 library(doParallel)
 
+# Load the necessary functions
+source('structureMCMC/combinations.R')
+source('structureMCMC/scoretables.R')
+source('structureMCMC/structurefns.R')
+source('structureMCMC/samplefns.R')
+source('structureMCMC/param_utils.R')
+source('structureMCMC/structureMCMC.R')
 source('2nodes_exp/Utils.R')
+
 
 set.seed(2024)
 
@@ -144,5 +152,53 @@ post_process(Sdd_RAG_0.25)
 post_process(Sdd_RAG_0.4)
 post_process(Sdd_RAG_0.6)
 post_process(Sdd_RAG_0.9)
+
+#####RAG-LL#####
+# Running inference
+cl <- parallel::makeCluster(numCores)
+doParallel::registerDoParallel(cl) 
+
+Sdd_RAG_0.1_LL <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(Sdd_RAG_0.1_ds[[i]])
+  result$result <- runStructMCMC(data,iterations = iter,blklist=NULL,scoretype=NULL,sample_parameters=TRUE)
+  return(result)
+}
+
+Sdd_RAG_0.25_LL <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(Sdd_RAG_0.25_ds[[i]])
+  result$result <- runStructMCMC(data,iterations = iter,blklist=NULL,scoretype=NULL,sample_parameters=TRUE)
+  return(result)
+}
+
+Sdd_RAG_0.4_LL <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(Sdd_RAG_0.4_ds[[i]])
+  result$result <- runStructMCMC(data,iterations = iter,blklist=NULL,scoretype=NULL,sample_parameters=TRUE)
+  return(result)
+}
+
+Sdd_RAG_0.6_LL <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(Sdd_RAG_0.6_ds[[i]])
+  result$result <- runStructMCMC(data,iterations = iter,blklist=NULL,scoretype=NULL,sample_parameters=TRUE)
+  return(result)
+}
+
+Sdd_RAG_0.9_LL <- foreach(i = seq_len(nsim), .combine = 'c') %dopar% {
+  result <- multiResultClass()
+  data <- as.data.frame(Sdd_RAG_0.9_ds[[i]])
+  result$result <- runStructMCMC(data,iterations = iter,blklist=NULL,scoretype=NULL,sample_parameters=TRUE)
+  return(result)
+}
+
+stopCluster(cl)
+
+post_process(Sdd_RAG_0.1_LL)
+post_process(Sdd_RAG_0.25_LL)
+post_process(Sdd_RAG_0.4_LL)
+post_process(Sdd_RAG_0.6_LL)
+post_process(Sdd_RAG_0.9_LL)
 
 #save.image(file="2nodes_exp/Sdd.RData")
