@@ -211,7 +211,6 @@ structureMCMC <- function(n,data,incidence,iterations,stepsave,fan.in,parenttabl
                  if (sample_parameters == TRUE) {
                    # Full ratios with betas and sigma2
                    # Proposed sigma2 and betas values
-                     rescorenodes, proposedsigma2)
                    proposedsigma2 <- sapply(1:n, function(x) update.sigma2j(j=x,N,incidence_new,am,TN))
                    proposedbetas <- sapply(1:n, function(x) update.betaj(j=x,incidence_new,sigma2j=proposedsigma2[x],TN))
                    
